@@ -11,12 +11,22 @@
           v-for="note in filteredNotes"
           :key="note.id"
           class="note-card"
-          :class="{ done: note.done, deleted: note.deleted }"
+          :class="{ done: note.done, deleted: note.deleted, pinned: note.pinned && !note.deleted }"
           @click="openNote(note)"
       >
         <div class="note-header">
           <div class="note-title">{{ note.title }}</div>
           <div class="note-actions" @click.stop>
+            <v-btn
+                v-if="!note.deleted"
+                icon
+                small
+                :color="note.pinned ? 'amber' : 'grey'"
+                @click.stop="togglePin(note)"
+                :title="note.pinned ? 'Открепить заметку' : 'Закрепить заметку'"
+            >
+              <v-icon>{{ note.pinned ? 'mdi-pin' : 'mdi-pin-outline' }}</v-icon>
+            </v-btn>
             <v-btn
                 v-if="!note.deleted && tab !== 'done'"
                 icon
@@ -87,34 +97,69 @@
 import { ref, computed } from 'vue'
 import { db } from '../firebase.js'
 import {
-  collection,
-  addDoc,
-  doc,
-  updateDoc,
-  onSnapshot,
-} from 'firebase/firestore'
+  collection, addDoc, doc, updateDoc, onSnapshot
+} from 'firebase/firestore' // serverTimestamp можно не тянуть, достаточно булева флага
 
 const tab = ref('active')
 const notes = ref([])
 const modal = ref(false)
-const modalNote = ref({ id: null, title: '', content: '', done: false, deleted: false })
+const modalNote = ref({ id: null, title: '', content: '', done: false, deleted: false, pinned: false })
 
 const notesCollection = collection(db, 'notes')
 
-// Подписка на изменения в Firestore в реальном времени
 onSnapshot(notesCollection, (snapshot) => {
-  notes.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  notes.value = snapshot.docs.map(d => {
+    const data = d.data()
+    // дефолты для старых документов
+    return {
+      id: d.id,
+      title: data.title || '',
+      content: data.content || '',
+      done: !!data.done,
+      deleted: !!data.deleted,
+      pinned: !!data.pinned
+    }
+  })
 })
 
-// Фильтр по вкладкам
+// Сколько закреплено (не удалённых)
+const pinnedCount = computed(() => notes.value.filter(n => n.pinned && !n.deleted).length)
+
+// Отсортированные по закрепу (сначала pinned)
+const baseSorted = computed(() => {
+  const arr = [...notes.value]
+  // pinned — вверх, далее просто по title (можно заменить на createdAt, если есть)
+  arr.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return (a.title || '').localeCompare(b.title || '')
+  })
+  return arr
+})
+
+// Фильтр по вкладкам поверх сортировки
 const filteredNotes = computed(() => {
-  if (tab.value === 'active') return notes.value.filter(n => !n.done && !n.deleted)
-  if (tab.value === 'done') return notes.value.filter(n => n.done && !n.deleted)
-  if (tab.value === 'deleted') return notes.value.filter(n => n.deleted)
-  return []
+  let list = []
+  if (tab.value === 'active') list = baseSorted.value.filter(n => !n.done && !n.deleted)
+  else if (tab.value === 'done') list = baseSorted.value.filter(n => n.done && !n.deleted)
+  else if (tab.value === 'deleted') list = baseSorted.value.filter(n => n.deleted)
+  return list
 })
 
-// Функции для изменения в Firestore
+// ПИН/АНПИН с ограничением 3
+async function togglePin(note) {
+  if (note.deleted) return
+  const noteRef = doc(db, 'notes', note.id)
+
+  if (!note.pinned && pinnedCount.value >= 3) {
+    // здесь можно заменить на v-snackbar; для простоты alert
+    alert('Можно закрепить не более 3 заметок.')
+    return
+  }
+
+  await updateDoc(noteRef, { pinned: !note.pinned })
+}
+
+// Остальной код без изменений...
 async function toggleDone(note) {
   const noteRef = doc(db, 'notes', note.id)
   await updateDoc(noteRef, { done: !note.done })
@@ -123,52 +168,46 @@ async function toggleDone(note) {
 async function deleteOrRestore(note) {
   const noteRef = doc(db, 'notes', note.id)
   if (!note.deleted) {
-    await updateDoc(noteRef, { deleted: true, done: false })
+    await updateDoc(noteRef, { deleted: true, done: false, pinned: false }) // при удалении снимаем пин
   } else {
     await updateDoc(noteRef, { deleted: false })
   }
 }
 
-// Открыть модалку с задачей
 function openNote(note) {
-  if (note.deleted) return // Удаленные нельзя редактировать
+  if (note.deleted) return
   modalNote.value = { ...note }
   modal.value = true
 }
 
-// Закрыть модалку
-function closeModal() {
-  modal.value = false
-}
+function closeModal() { modal.value = false }
 
-// Сохранить изменения (обновить или добавить)
 async function saveNote() {
   if (modalNote.value.id) {
-    // обновляем
     const noteRef = doc(db, 'notes', modalNote.value.id)
     await updateDoc(noteRef, {
       title: modalNote.value.title,
       content: modalNote.value.content,
     })
   } else {
-    // создаём новую задачу
     const newNote = {
       title: modalNote.value.title,
       content: modalNote.value.content,
       done: false,
       deleted: false,
+      pinned: false
     }
     await addDoc(notesCollection, newNote)
   }
   modal.value = false
-  modalNote.value = { id: null, title: '', content: '', done: false, deleted: false }
+  modalNote.value = { id: null, title: '', content: '', done: false, deleted: false, pinned: false }
 }
 
-// Создать новую задачу и открыть модалку
 function createNewNote() {
-  modalNote.value = { id: null, title: '', content: '', done: false, deleted: false }
+  modalNote.value = { id: null, title: '', content: '', done: false, deleted: false, pinned: false }
   modal.value = true
 }
+
 </script>
 
 <style scoped>
@@ -271,4 +310,14 @@ function createNewNote() {
   right: 24px;
   z-index: 100;
 }
+.note-card.pinned {
+  border: 2px dashed #ffb300; /* amber vibe */
+  box-shadow: 0 10px 22px rgba(255, 179, 0, 0.18);
+  position: relative;
+}
+.note-card.pinned .note-title::before {
+  content: "📌";
+  margin-right: 6px;
+}
+
 </style>
