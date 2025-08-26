@@ -1,0 +1,93 @@
+.notes-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px 80px;
+}
+
+.note-card {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: box-shadow 0.3s ease;
+    min-height: 160px;
+    height: 100%;
+    box-sizing: border-box;
+}
+.note-card:hover { box-shadow: 0 12px 25px rgba(0,0,0,0.15); }
+
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 8px;
+}
+
+.note-title {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #222;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+}
+
+.note-actions { display: flex; gap: 4px; }
+
+.note-content {
+    flex-grow: 1;
+    font-size: 0.95rem;
+    color: #555;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+
+.note-content.full-content {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+    white-space: pre-wrap;
+    display: block;
+}
+
+.note-card.done .note-title {
+    text-decoration: line-through;
+    color: #888;
+}
+.note-card.done {
+    background-color: #f0f9ff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.note-card.deleted {
+    opacity: 0.7;
+    background-color: #ffe6e6;
+}
+.note-card.deleted .note-header,
+.note-card.deleted .note-content { cursor: default; }
+
+.add-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 100;
+}
+.note-card.pinned {
+    border: 2px dashed #ffb300;
+    box-shadow: 0 10px 22px rgba(255, 179, 0, 0.18);
+    position: relative;
+}
+.note-card.pinned .note-title::before {
+    content: "📌";
+    margin-right: 6px;
+}
