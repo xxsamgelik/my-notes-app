@@ -1,3 +1,28 @@
+<script setup>
+import { useNotesBoard } from '@/composables/useNotesBoard'
+
+const {
+  tab,
+  filteredNotes,
+  modal,
+  modalNote,
+  togglePin,
+  toggleDone,
+  deleteOrRestore,
+  openNote,
+  closeModal,
+  saveNote,
+  createNewNote,
+
+  selectionMode,
+  toggleSelectionMode,
+  toggleSelect,
+  isSelected,
+
+  exportToExcel,
+} = useNotesBoard()
+</script>
+
 <template>
   <v-container fluid class="pa-4">
     <v-tabs v-model="tab" background-color="transparent" class="mb-6" grow>
@@ -5,6 +30,12 @@
       <v-tab value="done">Сделанные</v-tab>
       <v-tab value="deleted">Удалённые</v-tab>
     </v-tabs>
+
+    <!-- Панель режима выбора -->
+    <div v-if="selectionMode" class="mb-3" style="display:flex; gap:8px; align-items:center;">
+      <v-chip color="primary" variant="flat" label>Режим выбора включён</v-chip>
+      <v-btn size="small" variant="text" @click="toggleSelectionMode(false)">Выйти</v-btn>
+    </div>
 
     <div class="notes-board">
       <v-card
@@ -14,6 +45,16 @@
           :class="{ done: note.done, deleted: note.deleted, pinned: note.pinned && !note.deleted }"
           @click="openNote(note)"
       >
+        <!-- чекбокс выбора (только в selectionMode и не для удалённых) -->
+        <div v-if="selectionMode && !note.deleted" style="position:absolute; top:8px; left:8px; z-index:2">
+          <v-checkbox
+              density="compact"
+              hide-details
+              :model-value="isSelected(note.id)"
+              @update:model-value="toggleSelect(note.id)"
+          />
+        </div>
+
         <div class="note-header">
           <div class="note-title">{{ note.title }}</div>
           <div class="note-actions" @click.stop>
@@ -74,7 +115,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- FAB -->
+    <!-- FAB: добавить -->
     <v-btn
         fab
         fixed
@@ -84,33 +125,52 @@
         @click="createNewNote"
         title="Добавить задачу"
         class="add-btn"
+        style="right: 24px;"
     >
       <v-icon>mdi-plus</v-icon>
     </v-btn>
+
+    <!-- FAB: экспорт Excel с меню -->
+    <v-menu location="top start">
+      <template #activator="{ props }">
+        <v-btn
+            v-bind="props"
+            fab
+            fixed
+            bottom
+            color="success"
+            class="add-btn"
+            title="Экспорт в Excel"
+            style="right: 92px;"
+        @click.stop
+        >
+        <v-icon>mdi-file-excel</v-icon>
+        </v-btn>
+      </template>
+      <v-list density="compact">
+        <v-list-item @click="exportToExcel('current')">
+          <v-list-item-title>Экспорт — текущая вкладка</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="exportToExcel('all')">
+          <v-list-item-title>Экспорт — все заметки</v-list-item-title>
+        </v-list-item>
+        <v-list-item @click="exportToExcel('selected')">
+          <v-list-item-title>
+            Экспорт — выбранные
+          </v-list-item-title>
+          <v-list-item-subtitle>
+            (включит выбор, если ничего не отмечено)
+          </v-list-item-subtitle>
+        </v-list-item>
+        <v-divider />
+        <v-list-item @click="toggleSelectionMode()">
+          <v-list-item-title>
+            {{ selectionMode ? 'Выключить режим выбора' : 'Включить режим выбора' }}
+          </v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-menu>
   </v-container>
 </template>
 
-<script setup>
-import { useNotesBoard } from '@/composables/useNotesBoard'
-
-// получаем все реактивные сущности из композиционного модуля
-const {
-  tab,
-  filteredNotes,
-  modal,
-  modalNote,
-  togglePin,
-  toggleDone,
-  deleteOrRestore,
-  openNote,
-  closeModal,
-  saveNote,
-  createNewNote,
-} = useNotesBoard()
-</script>
-
-<!-- Вариант 1: импортом из JS -->
-<!-- <script setup src="@/composables/useNotesBoard.js"></script> -->
-
-<!-- Подключаем внешний css. scoped можно оставить, если стили только для этого компонента -->
 <style src="@/styles/NotesBoard.css" scoped></style>

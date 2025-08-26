@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { db } from '@/firebase'
 import { collection, addDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore'
+import * as XLSX from 'xlsx' // <-- добавляем
 
 export function useNotesBoard() {
     const tab = ref('active')
@@ -11,9 +12,12 @@ export function useNotesBoard() {
         id: null, title: '', content: '', done: false, deleted: false, pinned: false
     })
 
+    // Режим выбора для экспорта
+    const selectionMode = ref(false)
+    const selectedIds = ref(new Set())
+
     const notesCollection = collection(db, 'notes')
 
-    // live-обновления
     onSnapshot(notesCollection, (snapshot) => {
         notes.value = snapshot.docs.map(d => {
             const data = d.data()
@@ -26,11 +30,13 @@ export function useNotesBoard() {
                 pinned: !!data.pinned,
             }
         })
+        // если заметки исчезли — чистим выбор “мертвых” id
+        for (const id of Array.from(selectedIds.value)) {
+            if (!notes.value.some(n => n.id === id)) selectedIds.value.delete(id)
+        }
     })
 
-    const pinnedCount = computed(
-        () => notes.value.filter(n => n.pinned && !n.deleted).length
-    )
+    const pinnedCount = computed(() => notes.value.filter(n => n.pinned && !n.deleted).length)
 
     const baseSorted = computed(() => {
         const arr = [...notes.value]
@@ -74,13 +80,16 @@ export function useNotesBoard() {
 
     function openNote(note) {
         if (note.deleted) return
+        // в режиме выбора клики по карточке переключают чекбокс
+        if (selectionMode.value) {
+            toggleSelect(note.id)
+            return
+        }
         modalNote.value = { ...note }
         modal.value = true
     }
 
-    function closeModal() {
-        modal.value = false
-    }
+    function closeModal() { modal.value = false }
 
     async function saveNote() {
         if (modalNote.value.id) {
@@ -108,6 +117,55 @@ export function useNotesBoard() {
         modal.value = true
     }
 
+    // ==== выбор заметок для экспорта ====
+    function toggleSelectionMode(force) {
+        selectionMode.value = typeof force === 'boolean' ? force : !selectionMode.value
+        if (!selectionMode.value) selectedIds.value.clear()
+    }
+    function toggleSelect(id) {
+        if (selectedIds.value.has(id)) selectedIds.value.delete(id)
+        else selectedIds.value.add(id)
+    }
+    function isSelected(id) {
+        return selectedIds.value.has(id)
+    }
+
+    // ==== экспорт в xlsx ====
+    /**
+     * mode: 'current' | 'all' | 'selected'
+     */
+    function exportToExcel(mode = 'current') {
+        let list = []
+        if (mode === 'current') {
+            list = filteredNotes.value
+        } else if (mode === 'all') {
+            list = baseSorted.value
+        } else if (mode === 'selected') {
+            if (selectedIds.value.size === 0) {
+                // если ничего не выбрано — включим режим выбора
+                alert('Выберите заметки: включён режим выбора (галочки на карточках). Затем повторите экспорт.')
+                toggleSelectionMode(true)
+                return
+            }
+            const ids = selectedIds.value
+            list = baseSorted.value.filter(n => ids.has(n.id))
+        }
+
+        // Только Название + Контент
+        const rows = list.map(n => ({
+            'Название': n.title || '',
+            'Контент': n.content || '',
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(rows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Notes')
+        const fileName = mode === 'selected' ? 'notes-selected.xlsx'
+            : mode === 'all'      ? 'notes-all.xlsx'
+                :                        `notes-${tab.value}.xlsx`
+        XLSX.writeFile(wb, fileName)
+    }
+
     return {
         tab,
         filteredNotes,
@@ -120,5 +178,15 @@ export function useNotesBoard() {
         closeModal,
         saveNote,
         createNewNote,
+
+        // выбор
+        selectionMode,
+        selectedIds,
+        toggleSelectionMode,
+        toggleSelect,
+        isSelected,
+
+        // экспорт
+        exportToExcel,
     }
 }
